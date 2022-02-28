@@ -1,0 +1,1 @@
+This package exposes `ConversionGenerator`, a public struct that fulfills the [`gengo.Generator` interface](https://github.com/wk8/gengo/blob/b066a9a25752babedcf3225ff19db096d5cf6d6b/generator/generator.go#L89-L189) in an generic, extensible way to be able to write custom generators for converting similar structs across two (or more) packages.
