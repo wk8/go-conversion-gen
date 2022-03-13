@@ -1,6 +1,8 @@
 package converter
 
 import (
+	gengogenerator "k8s.io/gengo/generator"
+
 	"github.com/wk8/go-conversion-gen/pkg"
 	"github.com/wk8/go-conversion-gen/pkg/generator"
 )
@@ -10,6 +12,9 @@ import (
 type Options struct {
 	// GeneratorOptions will be passed down to the Generators this converter spawns.
 	GeneratorOptions *generator.Options
+
+	// OutputFileBaseName is the name of the generated file in each target/input package.
+	OutputFileBaseName string
 
 	// PeerPackagesTagName is the marker that the converter will look for in the doc.go file
 	// of input packages.
@@ -22,11 +27,16 @@ type Options struct {
 	BasePeerPackages []string
 
 	// TODO wkpo externalTypesTagName??
+
+	// ExtraGenerators allows adding more gengo generators, if needed.
+	ExtraGenerators func(context *gengogenerator.Context, conversionGenerator *generator.Generator) ([]gengogenerator.Generator, error)
 }
 
 func DefaultOptions() *Options {
 	return &Options{
-		GeneratorOptions:    generator.DefaultOptions(),
+		GeneratorOptions: generator.DefaultOptions(),
+
+		OutputFileBaseName:  "conversion_generated",
 		PeerPackagesTagName: pkg.DefaultTagName,
 	}
 }

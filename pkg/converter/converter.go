@@ -1,5 +1,6 @@
 package converter
 
+// TODO wkpo lint and goimports...
 import (
 	"fmt"
 	"github.com/spf13/pflag"
@@ -15,8 +16,7 @@ import (
 type Converter struct {
 	Options *Options
 
-	args           *args.GeneratorArgs
-	targetPackages []string
+	args *args.GeneratorArgs
 }
 
 func NewConverter(targetPackages []string, options *Options) *Converter {
@@ -30,20 +30,22 @@ func NewConverter(targetPackages []string, options *Options) *Converter {
 		options.GeneratorOptions = generator.DefaultOptions()
 	}
 
+	args.OutputFileBaseName = options.OutputFileBaseName
+	args.InputDirs = targetPackages
+
 	return &Converter{
 		Options: options,
-
-		args:           args,
-		targetPackages: targetPackages,
+		args:    args,
 	}
 }
 
 type customCLIArgs struct {
-	noUnsafeConversions bool
-	tagName             string
-	functionTagName     string
-	peerPackagesTagName string
-	basePeerPackages    []string
+	noUnsafeConversions               bool
+	tagName                           string
+	functionTagName                   string
+	peerPackagesTagName               string
+	basePeerPackages                  []string
+	noPublicConversionFunctionOnError bool
 }
 
 // TODO wkpo makes sense? should it be called on
@@ -59,6 +61,8 @@ func (ca *customCLIArgs) addFlags(fs *pflag.FlagSet) {
 		"\"+<tag-name>=<peer-pkg-1>,<peer-pkg-2>\" in an input package's doc.go file will instruct the converter to look for that package's peer types in the specified peer packages")
 	fs.StringSliceVar(&ca.basePeerPackages, "base-peer-packages", ca.basePeerPackages,
 		"Comma-separated list of peer packages to be shared between all inputs - that's where the converter looks for peer types to generate conversion functions.")
+	fs.BoolVar(&ca.noPublicConversionFunctionOnError, "no-public-conversion-function-on-error", ca.noPublicConversionFunctionOnError,
+		"If true, will not generate a public conversion function if it's unable to generate conversion code for any field - it will still generate a private conversion function that you can then wrap in your own public function.")
 }
 
 func (ca *customCLIArgs) populateOptions(options *Options) {
@@ -77,6 +81,27 @@ func (ca *customCLIArgs) populateOptions(options *Options) {
 	if len(ca.basePeerPackages) != 0 {
 		options.BasePeerPackages = ca.basePeerPackages
 	}
+	if ca.noPublicConversionFunctionOnError {
+		options.GeneratorOptions.MissingFieldsHandler = ErrorMissingFieldHandler
+		options.GeneratorOptions.InconvertibleFieldsHandler = ErrorInconvertibleFieldsHandler
+
+		// TODO wkpo UnsupportedTypesHandler and ExternalConversionsHandler?
+	}
+}
+
+// ErrorMissingFieldHandler is a missing field handler that will prevent the generation of public conversion functions for structs that have one or more field
+// that are missing conversion functions.
+func ErrorMissingFieldHandler(inVar, outVar generator.NamedVariable, member *types.Member, sw *gengogenerator.SnippetWriter) error {
+	sw.Do("// WARNING: in."+member.Name+" requires manual conversion: does not exist in peer-type\n", nil)
+	return fmt.Errorf("field " + member.Name + " requires manual conversion")
+}
+
+// ErrorInconvertibleFieldsHandler is a missing field handler that will prevent the generation of public conversion functions for structs that have one or more field
+// that are inconvertible.
+func ErrorInconvertibleFieldsHandler(inVar, outVar generator.NamedVariable, inMember, outMember *types.Member, sw *gengogenerator.SnippetWriter) error {
+	sw.Do("// WARNING: in."+inMember.Name+" requires manual conversion: inconvertible types ("+
+		inMember.Type.String()+" vs "+outMember.Type.String()+")\n", nil)
+	return fmt.Errorf("field " + inMember.Name + " requires manual conversion")
 }
 
 func NewConverterFromCLIFlags() *Converter {
@@ -87,8 +112,8 @@ func NewConverterFromCLIFlags() *Converter {
 	args.CustomArgs = customArgs
 
 	return &Converter{
-		args:    args,
 		Options: DefaultOptions(),
+		args:    args,
 	}
 }
 
@@ -163,8 +188,18 @@ func (c *Converter) packages(context *gengogenerator.Context, arguments *args.Ge
 				PackageName: filepath.Base(pkg.Path),
 				PackagePath: pkg.Path,
 				HeaderText:  header,
-				GeneratorList: []gengogenerator.Generator{
-					conversionGenerator,
+				GeneratorFunc: func(context *gengogenerator.Context) []gengogenerator.Generator {
+					generators := []gengogenerator.Generator{conversionGenerator}
+
+					if c.Options.ExtraGenerators != nil {
+						extraGenerators, err := c.Options.ExtraGenerators(context, conversionGenerator)
+						if err != nil {
+							klog.Fatalf("unable to build extra generators for %v: %v", pkg, err)
+						}
+						generators = append(generators, extraGenerators...)
+					}
+
+					return generators
 				},
 				FilterFunc: func(c *gengogenerator.Context, t *types.Type) bool {
 					return t.Name.Package == pkg.Path
