@@ -19,12 +19,16 @@ type Options struct {
 
 	// TagName is the marker that the generator will look for in types' comments:
 	// "+<tag-name>=false" in a type's comment will instruct conversion-gen to skip that type.
+	// "+<tag-name>=no-public" in a type's comment will instruct conversion-gen to not generate any public conversion
+	//   function involving that type (either to or from it). It will still generate private conversion functions,
+	//   that can then be wrapped publicly with additional logic.
 	// TODO wkpo rename to TypeTagName ?
 	TagName string
 
 	// FunctionTagName is the marker that the generator will look for in functions' comments, in
 	// particular for manual conversion functions:
 	// "+<tag-name>=drop" in a manual conversion function's comment means to drop that conversion altogether.
+	// TODO wkpo would be better to set it to "drop"? or support both?
 	// TODO wkpo grep for "copy-only" and remove!
 	FunctionTagName string
 

@@ -54,7 +54,7 @@ func (ca *customCLIArgs) addFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&ca.noUnsafeConversions, "skip-unsafe", ca.noUnsafeConversions,
 		"If true, will not generate code using unsafe pointer conversions; resulting code may be slower.")
 	fs.StringVar(&ca.tagName, "tag-name", ca.tagName,
-		"comment tag. \"+<tag-name>=false\" in a type's comment will skip that type.")
+		"comment tag. \"+<tag-name>=false\" in a type's comment will skip that type; \"+<tag-name>=no-public\" will skip generating public conversion functions either to or from it - it will still generate private conversion functions")
 	fs.StringVar(&ca.functionTagName, "function-tag-name", ca.functionTagName,
 		"\"+<tag-name>=drop\" in a manual conversion function's comment means to drop that conversion altogether.")
 	// TODO wkpo i think the syntax is wrong down below, not comma separated
