@@ -28,7 +28,7 @@ import (
 	"k8s.io/gengo/types"
 )
 
-// a ManualConversionsTracker keeps track of manually defined conversion functions.
+// A ManualConversionsTracker keeps track of manually defined conversion functions.
 type ManualConversionsTracker struct {
 	// see the explanation on NewManualConversionsTracker.
 	additionalConversionArguments []NamedVariable

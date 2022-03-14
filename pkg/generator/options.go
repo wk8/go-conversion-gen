@@ -1,7 +1,6 @@
 package generator
 
 import (
-	"github.com/wk8/go-conversion-gen/pkg"
 	"k8s.io/gengo/generator"
 	"k8s.io/gengo/types"
 )
@@ -28,6 +27,20 @@ type Options struct {
 	// "+<tag-name>=drop" in a manual conversion function's comment means to drop that conversion altogether.
 	// TODO wkpo grep for "copy-only" and remove!
 	FunctionTagName string
+
+	// PeerPackagesTagName is the marker that the generator will look for in the doc.go file
+	// of input packages for peer packages to use for each of the inputs.
+	// TODO wkpo check that this syntax is the right one? for several pkgs? might actually just be the same tag repeated several times
+	// "+<tag-name>=<peer-pkg-1>,<peer-pkg-2>" in an input package's doc.go file will instruct
+	// the converter to look for that package's peer types in the specified peer packages.
+	PeerPackagesTagName string
+
+	// ExtraImportsTagName is the marker that the generator will look for in the doc.go file
+	// of input packages for extra imports to include in the generated conversion files.
+	// Note that this should only be used in some very specific cases where `ImportTracker`s
+	// fail to properly keep track of which imports are needed - e.g. in some cases with
+	// go package versions.
+	ExtraImportsTagName string
 
 	// MissingFieldsHandler allows setting a callback to decide what happens when converting
 	// from inVar.Type to outVar.Type, and when inVar.Type's member doesn't exist in outType.
@@ -92,7 +105,9 @@ type Options struct {
 
 func DefaultOptions() *Options {
 	return &Options{
-		TagName:         pkg.DefaultTagName,
-		FunctionTagName: pkg.DefaultTagName,
+		TagName:             DefaultTagName,
+		FunctionTagName:     DefaultTagName,
+		PeerPackagesTagName: DefaultTagName,
+		ExtraImportsTagName: DefaultTagName + "-extra-imports",
 	}
 }

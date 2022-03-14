@@ -57,7 +57,8 @@ func (ca *customCLIArgs) addFlags(fs *pflag.FlagSet) {
 		"comment tag. \"+<tag-name>=false\" in a type's comment will skip that type.")
 	fs.StringVar(&ca.functionTagName, "function-tag-name", ca.functionTagName,
 		"\"+<tag-name>=drop\" in a manual conversion function's comment means to drop that conversion altogether.")
-	fs.StringVar(&ca.peerPackagesTagName, "perr-packages-tag-name", ca.peerPackagesTagName,
+	// TODO wkpo i think the syntax is wrong down below, not comma separated
+	fs.StringVar(&ca.peerPackagesTagName, "peer-packages-tag-name", ca.peerPackagesTagName,
 		"\"+<tag-name>=<peer-pkg-1>,<peer-pkg-2>\" in an input package's doc.go file will instruct the converter to look for that package's peer types in the specified peer packages")
 	fs.StringSliceVar(&ca.basePeerPackages, "base-peer-packages", ca.basePeerPackages,
 		"Comma-separated list of peer packages to be shared between all inputs - that's where the converter looks for peer types to generate conversion functions.")
@@ -76,7 +77,7 @@ func (ca *customCLIArgs) populateOptions(options *Options) {
 		options.GeneratorOptions.FunctionTagName = ca.functionTagName
 	}
 	if ca.peerPackagesTagName != "" {
-		options.PeerPackagesTagName = ca.peerPackagesTagName
+		options.GeneratorOptions.PeerPackagesTagName = ca.peerPackagesTagName
 	}
 	if len(ca.basePeerPackages) != 0 {
 		options.BasePeerPackages = ca.basePeerPackages
@@ -166,9 +167,6 @@ func (c *Converter) packages(context *gengogenerator.Context, arguments *args.Ge
 			continue
 		}
 
-		// get peer packages from the package's doc.go file, if any
-		peerPkgs := c.extractPeerPackages(pkg)
-
 		// TODO wkpo all that stuff about external types...?
 
 		conversionGenerator, err := generator.NewConversionGenerator(
@@ -176,7 +174,7 @@ func (c *Converter) packages(context *gengogenerator.Context, arguments *args.Ge
 			arguments.OutputFileBaseName,
 			pkg.Path,
 			pkg.Path, // TODO wkpo why the 2 args???
-			append(peerPkgs, c.Options.BasePeerPackages...),
+			c.Options.BasePeerPackages,
 			c.Options.GeneratorOptions,
 		)
 		if err != nil {
@@ -208,13 +206,6 @@ func (c *Converter) packages(context *gengogenerator.Context, arguments *args.Ge
 	}
 
 	return
-}
-
-func (c *Converter) extractPeerPackages(pkg *types.Package) []string {
-	if c.Options.PeerPackagesTagName != "" {
-		return types.ExtractCommentTags("+", pkg.Comments)[c.Options.PeerPackagesTagName]
-	}
-	return nil
 }
 
 func defaultGenericArgs() *args.GeneratorArgs {

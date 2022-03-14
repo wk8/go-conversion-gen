@@ -21,6 +21,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/pkg/errors"
 	"k8s.io/gengo/generator"
 	"k8s.io/gengo/namer"
 	"k8s.io/gengo/types"
@@ -40,9 +41,9 @@ type Generator struct {
 
 	// typesPackage is the package that contains the types that conversion func are going to be
 	// generated for.
-	typesPackage string
+	typesPackage *types.Package
 	// outputPackage is the package that the conversion funcs are going to be output to.
-	outputPackage string
+	outputPackage *types.Package
 	// peerPackages are the packages that contain the peers of typesPackage's types .
 	peerPackages []string
 	// unsafeConversionArbitrator allows comparing types' memory layouts to decide whether
@@ -60,11 +61,17 @@ func NewConversionGenerator(context *generator.Context, outputFileName, typesPac
 	if options.ManualConversionsTracker == nil {
 		options.ManualConversionsTracker = NewManualConversionsTracker()
 	}
-	if err := findManualConversionFunctions(context, options.ManualConversionsTracker, append(peerPackages, outputPackage, typesPackage)); err != nil {
+
+	typesPkg, err := getPackage(context, typesPackage)
+	if err != nil {
+		return nil, err
+	}
+	oututPkg, err := getPackage(context, outputPackage)
+	if err != nil {
 		return nil, err
 	}
 
-	return &Generator{
+	g := &Generator{
 		DefaultGen: generator.DefaultGen{
 			OptionalName: outputFileName,
 		},
@@ -72,13 +79,32 @@ func NewConversionGenerator(context *generator.Context, outputFileName, typesPac
 
 		ImportTracker: generator.NewImportTracker(),
 
-		typesPackage:  typesPackage,
-		outputPackage: outputPackage,
-		peerPackages:  peerPackages,
+		typesPackage:  typesPkg,
+		outputPackage: oututPkg,
 
 		unsafeConversionArbitrator: newUnsafeConversionArbitrator(options.ManualConversionsTracker),
 		peerTypes:                  make(map[string]*types.Type),
-	}, nil
+	}
+
+	// get peer packages from the package's doc.go file, if any
+	g.peerPackages = append(g.extractDocFileTag(options.PeerPackagesTagName), peerPackages...)
+
+	if err := findManualConversionFunctions(context, options.ManualConversionsTracker,
+		append(g.peerPackages, outputPackage, typesPackage)); err != nil {
+		return nil, err
+	}
+
+	return g, nil
+}
+
+// TODO wkpo need to be quite that verbose?
+func getPackage(context *generator.Context, pkgPath string) (*types.Package, error) {
+	pkg := context.Universe[pkgPath]
+	if pkg != nil {
+		return pkg, nil
+	}
+	pkg, err := context.AddDirectory(pkgPath)
+	return pkg, errors.Wrapf(err, "unable to load package %q", pkgPath)
 }
 
 func findManualConversionFunctions(context *generator.Context, tracker *ManualConversionsTracker, packagePaths []string) error {
@@ -104,7 +130,7 @@ const (
 // Namers returns the name system used by ConversionGenerators.
 func (g *Generator) Namers(*generator.Context) namer.NameSystems {
 	return namer.NameSystems{
-		rawNamer: namer.NewRawNamer(g.outputPackage, g.ImportTracker),
+		rawNamer: namer.NewRawNamer(g.outputPackage.Path, g.ImportTracker),
 		publicImportTrackingNamer: &namerPlusImportTracking{
 			delegate: ConversionNamer(),
 			tracker:  g.ImportTracker,
@@ -130,20 +156,26 @@ func (g *Generator) Filter(context *generator.Context, t *types.Type) bool {
 
 // Imports returns the imports to add to generated files.
 func (g *Generator) Imports(*generator.Context) (imports []string) {
-	var importLines []string
-	for _, singleImport := range g.ImportTracker.ImportLines() {
-		if g.isOtherPackage(singleImport) {
-			importLines = append(importLines, singleImport)
+	// from the import tracker
+	for _, importLine := range g.ImportTracker.ImportLines() {
+		if g.isOtherPackage(importLine) {
+			imports = append(imports, importLine)
 		}
 	}
-	return importLines
+
+	// from doc.go comments, if any
+	for _, importLine := range g.extractDocFileTag(g.Options.ExtraImportsTagName) {
+		imports = append(imports, importLine)
+	}
+
+	return
 }
 
 func (g *Generator) isOtherPackage(pkg string) bool {
-	if pkg == g.outputPackage {
+	if pkg == g.outputPackage.Path {
 		return false
 	}
-	if strings.HasSuffix(pkg, `"`+g.outputPackage+`"`) {
+	if strings.HasSuffix(pkg, `"`+g.outputPackage.Path+`"`) {
 		return false
 	}
 	return true
@@ -581,13 +613,13 @@ func (g *Generator) GetPeerTypeFor(context *generator.Context, t *types.Type) *t
 
 func (g *Generator) convertibleOnlyWithinPackage(inType, outType *types.Type) bool {
 	var t, other *types.Type
-	if inType.Name.Package == g.typesPackage {
+	if inType.Name.Package == g.typesPackage.Path {
 		t, other = inType, outType
 	} else {
 		t, other = outType, inType
 	}
 
-	if t.Name.Package != g.typesPackage {
+	if t.Name.Package != g.typesPackage.Path {
 		return false
 	}
 
@@ -625,10 +657,18 @@ func (g *Generator) optedOut(t interface{}) bool {
 
 // TODO wkpo look at all comments, and document?
 func (g *Generator) extractTag(comments []string) []string {
-	if g.Options.TagName == "" {
+	return extractTag(g.Options.TagName, comments)
+}
+
+func (g *Generator) extractDocFileTag(tagName string) []string {
+	return extractTag(tagName, g.typesPackage.Comments)
+}
+
+func extractTag(tagName string, comments []string) []string {
+	if tagName == "" {
 		return nil
 	}
-	return types.ExtractCommentTags("+", comments)[g.Options.TagName]
+	return types.ExtractCommentTags("+", comments)[tagName]
 }
 
 func (g *Generator) functionHasTag(function *types.Type, tagValue string) bool {
