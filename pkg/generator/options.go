@@ -20,6 +20,8 @@ type Options struct {
 	// TagName is the marker that the generator will look for in types' comments:
 	// "+<tag-name>=false" in a type's comment will instruct conversion-gen to skip that type.
 	// "+<tag-name>=no-public" in a type's comment will instruct conversion-gen to not generate any public conversion
+	// "+<tag-name>=peerName:PeerTypeName" in a type's comment will tell conversion-gen to look for peer types with the given name,
+	//                                     instead of assuming peer types will have the same name
 	//   function involving that type (either to or from it). It will still generate private conversion functions,
 	//   that can then be wrapped publicly with additional logic.
 	// TODO wkpo rename to TypeTagName ?

@@ -603,16 +603,27 @@ func (g *Generator) GetPeerTypeFor(context *generator.Context, t *types.Type) *t
 		return peerType
 	}
 
+	peerName := t.Name.Name
+	if present, name := g.hasTagOption(t.CommentLines, "peerName"); present && len(name) != 0 {
+		klog.V(5).Infof("Using custom peer name %q for input type %s", name, t.Name)
+		peerName = name
+	}
+
 	var peerType *types.Type
 	for _, peerPkgPath := range g.peerPackages {
 		peerPkg := context.Universe[peerPkgPath]
-		if peerPkg != nil && peerPkg.Has(t.Name.Name) {
-			peerType = peerPkg.Types[t.Name.Name]
+		if peerPkg != nil && peerPkg.Has(peerName) {
+			peerType = peerPkg.Types[peerName]
 			break
 		}
 	}
 
 	g.peerTypes[t.Name.Name] = peerType
+
+	if peerType != nil {
+		klog.V(5).Infof("Found peer type %s for input type %s", peerType, t)
+	}
+
 	return peerType
 }
 
@@ -665,6 +676,18 @@ func (g *Generator) hasTag(comments []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// extracts option tags, that is, tags of the form '+<tag-name>=<optionName>:<optionValue>'
+func (g *Generator) hasTagOption(comments []string, optionName string) (bool, string) {
+	vals := g.extractTag(comments)
+	for _, val := range vals {
+		split := strings.Split(val, ":")
+		if len(split) == 2 && split[0] == optionName {
+			return true, split[1]
+		}
+	}
+	return false, ""
 }
 
 // TODO wkpo look at all comments, and document?

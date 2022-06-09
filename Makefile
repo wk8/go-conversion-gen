@@ -3,7 +3,7 @@
 SHELL := /usr/bin/env bash
 
 .PHONY: all
-all: compile
+all: build
 
 .PHONY: build
 build:
